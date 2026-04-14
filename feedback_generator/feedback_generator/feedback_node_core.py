@@ -2,6 +2,7 @@ import sys
 import threading
 import signal
 import math
+import time
 
 import rclpy
 from rclpy.node import Node
@@ -44,6 +45,8 @@ control_qos = qos.QoSProfile(
 class FeedbackGenerator_Core(Node):
     """Generate feedback messages as if they were coming from the rover over VicCAN."""
 
+    ASTRA_EPOCH = time.struct_time((2022, 1, 1, 0, 0, 0, 0, 0, 0))
+
     def __init__(self):
         super().__init__("feedback_generator_core_node")
 
@@ -62,7 +65,7 @@ class FeedbackGenerator_Core(Node):
 
         # from_vic
         self.anchor_fromvic_pub_ = self.create_publisher(
-            String, "/anchor/from_vic/mock_mcu", 20
+            VicCAN, "/anchor/from_vic/mock_mcu", 20
         )
 
         ###################################################
@@ -149,6 +152,25 @@ class FeedbackGenerator_Core(Node):
             )
         )
 
+        # idc
+        # MCU Versioning
+        self.send_viccan(
+            VicCAN(
+                header=Header(),
+                mcu_name="core",
+                command_id=46,
+                data=[int("31555b4", 16), int("5c2b817", 16)],
+            )
+        )
+        self.send_viccan(
+            VicCAN(
+                header=Header(),
+                mcu_name="core",
+                command_id=47,
+                data=[time.mktime(time.localtime()) - time.mktime(self.ASTRA_EPOCH), 0],  # TODO
+            )
+        )
+
     def rev_feedback_timer_callback(self):
         for i in range(4):
             # REV Motor Power (ID, temp, voltage, current)
@@ -172,10 +194,11 @@ class FeedbackGenerator_Core(Node):
 
     def send_viccan(self, msg: VicCAN):
         """For now, send messages as strings on /anchor/from_vic/mock_mcu"""
-        data = f"can_relay_fromvic,{msg.mcu_name},{msg.command_id}," + ",".join(
-            str(x) for x in msg.data
-        )
-        self.anchor_fromvic_pub_.publish(String(data=data))
+        # data = f"can_relay_fromvic,{msg.mcu_name},{msg.command_id}," + ",".join(
+        #     str(x) for x in msg.data
+        # )
+        # self.anchor_fromvic_pub_.publish(String(data=data))
+        self.anchor_fromvic_pub_.publish(msg)
 
 
 def exit_handler(signum, frame):
